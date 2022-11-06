@@ -1,0 +1,188 @@
+---
+
+- name: setup laravel server
+  hosts: webservers
+  become: true
+  become_user: root
+  environment:
+      AWS_ACCESS_KEY_ID: AKIAZLO2BAK5DHBC4CXI
+      AWS_SECRET_ACCESS_KEY: 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
+
+  tasks:
+
+    - name: system update
+      shell: sudo apt update
+
+    - name: system upgrade
+      shell: sudo apt upgrade -y
+
+    - name: Install packages
+      apt:
+        pkg:
+          - git
+          - apache2
+          - php8.1
+          - php8.1-cli
+          - php-xml
+          - libapache2-mod-php
+          - zip
+          - unzip
+          - curl
+          - php8.1-curl
+          - php8.1-mysql
+          - postgresql
+        state: latest
+        update_cache: yes
+      notify:
+         - Restart apache2
+         - Restart php8.1
+
+    - name: Installation install software-properties-common
+      apt: name=software-properties-common
+
+    - name: Enable UFW
+      ufw: direction=incoming policy=deny state=enabled
+
+    - name: UFW limit SSH
+      ufw: rule=limit port=ssh
+
+    - name: UFW open HTTP
+      ufw: rule=allow port=http
+
+    - name: "copy script"
+      copy: src=postgres.sh dest=/home/ubuntu mode=0777
+
+    - name: "execute the script"
+      command: sh /home/ubuntu/postgres.sh
+
+    - name: Installing Mysql and dependencies
+      package:
+       name: "{{item}}"
+       state: present
+       update_cache: yes
+      loop:
+        - mysql-server
+        - mysql-client
+        - python3-mysqldb
+        - libmysqlclient-dev
+
+    - name: start and enable mysql service
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: creating mysql user
+      mysql_user:
+        name: "{{db_user}}"
+        password: "{{db_pass}}"
+        priv: '*.*:ALL'
+        host: '%'
+        state: present
+
+    - name: creating altschool_db
+      mysql_db:
+        name: "{{db_name}}"
+        state: present
+
+    - name: Enable remote login to mysql
+      lineinfile:
+         path: /etc/mysql/mysql.conf.d/mysqld.cnf
+         regexp: '^bind-address'
+         line: 'bind-address = 0.0.0.0'
+         backup: yes
+      notify:
+         - Restart mysql
+
+    - name: Download composer installer
+      get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer
+
+    - name: Install composer
+      shell: php /tmp/composer --install-dir=/usr/local/bin
+
+    - name: Rename composer executable
+      shell: mv /usr/local/bin/composer.phar /usr/local/bin/composer
+
+    - name: Set permissions for composer file
+      file:
+          path: /usr/local/bin/composer
+          mode: a+x
+          state: file
+
+    - name: Git clone Repository
+      git: >
+        repo=https://github.com/f1amy/laravel-realworld-example-app.git
+        dest=/home/ubuntu/altschool
+        force=yes
+        accept_hostkey=yes
+
+    - name: copy .env
+      template: src=.env.j2 dest=/home/ubuntu/altschool/.env mode=0755
+
+    - name: change group ownership
+      shell: chown -R ubuntu:ubuntu /home/ubuntu/altschool
+
+    - name: change permission
+      shell: sudo chmod -R 755 /home/ubuntu/altschool
+
+    - name: Change permission
+      shell: sudo chmod -R 775 /home/ubuntu/altschool/storage
+
+    - name: "Composer install"
+      become: false
+      composer:
+        command: install
+        global_command: false
+        working_dir: /home/ubuntu/altschool
+
+    - name: "Composer create-project"
+      become: false
+      composer:
+        command: create-project
+        global_command: false
+        working_dir: /home/ubuntu/altschool
+
+    - name: copy lavarel project
+      shell: sudo mv /home/ubuntu/altschool /var/www/altschool
+
+    - name: Create .htaccess for Laravel
+      template: src=.htacess.j2 dest=/var/www/altschool/.htaccess mode=0755
+
+    - name: change laravel ownership
+      shell: chown -R www-data:www-data /var/www/altschool
+
+    - name: Remove default apache vhost config from sites-enabled
+      file: name=/etc/apache2/sites-enabled/000-default.conf state=absent
+
+    - name: Create apache vhosts for  domain
+      template: src=web.conf.j2 dest="/etc/apache2/sites-available/altschool.conf" owner=www-data group=www-data
+
+    - name: Update a2ensite
+      command: a2ensite altschool
+
+    - name: Enable the Apache rewrite module
+      command:  a2enmod rewrite
+      notify:
+        - Restart apache2
+
+    - name: Run artisan migrate
+      shell: php /var/www/altschool/artisan migrate --seed
+
+
+  handlers:
+    - name: Restart apache2
+      service:
+        name: apache2
+        state: restarted
+
+    - name: Restart mysql
+      service:
+        name: mysql
+        state: restarted
+
+    - name: Restart php8.1
+      service:
+        name: php8.1
+        state: restarted

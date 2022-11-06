@@ -1,0 +1,16 @@
+<VirtualHost *:80>
+    ServerAdmin admin@altschool.demo
+    ServerName altschool.demo 
+    serverAlias www.altschool.demo 
+
+    DocumentRoot /var/www/altschool/public
+
+    <Directory /var/www/altschool/public>
+    Options Indexes FollowSymlinks
+    AllowOverride ALL
+    Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
