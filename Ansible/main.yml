@@ -5,9 +5,8 @@
   become: true
   become_user: root
   environment:
-      AWS_ACCESS_KEY_ID: AKIAZLO2BAK5DHBC4CXI
-      AWS_SECRET_ACCESS_KEY: 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
-
+      AWS_ACCESS_KEY_ID: 
+      AWS_SECRET_ACCESS_KEY: 
   tasks:
 
     - name: system update
